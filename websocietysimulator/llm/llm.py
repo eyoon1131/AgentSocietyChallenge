@@ -207,7 +207,7 @@ class GeminiLLM(LLMBase):
             if stop_strs:
                 kwargs["stop"] = stop_strs
             response = self.client.chat.completions.create(**kwargs)
-            print(response)
+            # print(response)
             if n == 1:
                 return response.choices[0].message.content
             else:
