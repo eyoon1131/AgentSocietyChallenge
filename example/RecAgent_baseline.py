@@ -2,7 +2,7 @@ import json
 from websocietysimulator import Simulator
 from websocietysimulator.agent import RecommendationAgent
 import tiktoken
-from websocietysimulator.llm import LLMBase, InfinigenceLLM
+from websocietysimulator.llm import LLMBase, OpenAILLM, GeminiLLM
 from websocietysimulator.agent.modules.planning_modules import PlanningBase
 from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
 import re
@@ -162,9 +162,9 @@ class MyRecommendationAgent(RecommendationAgent):
 
 
 if __name__ == "__main__":
-    task_set = "amazon" # "goodreads" or "yelp"
+    task_set = "yelp" # "goodreads" or "yelp"
     # Initialize Simulator
-    simulator = Simulator(data_dir="your data_dir", device="auto", cache=True)
+    simulator = Simulator(data_dir="../data/yelp_processed", device="auto", cache=True)
 
     # Load scenarios
     simulator.set_task_and_groundtruth(task_dir=f"./track2/{task_set}/tasks", groundtruth_dir=f"./track2/{task_set}/groundtruth")
@@ -173,11 +173,11 @@ if __name__ == "__main__":
     simulator.set_agent(MyRecommendationAgent)
 
     # Set LLM client
-    simulator.set_llm(InfinigenceLLM(api_key="your api_key"))
+    simulator.set_llm(OpenAILLM(api_key=""))
 
     # Run evaluation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
+    agent_outputs = simulator.run_simulation(number_of_tasks=1, enable_threading=True, max_workers=10)
 
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
