@@ -72,7 +72,7 @@ class RecReasoning(ReasoningBase):
         reasoning_result = self.llm(
             messages=messages,
             temperature=0.1,
-            max_tokens=8192
+            max_tokens=16384,
         )
         
         return reasoning_result
@@ -114,13 +114,12 @@ class MyRecommendationAgent(RecommendationAgent):
                 if input_tokens > 12000:
                     encoding = tiktoken.get_encoding("cl100k_base")
                     user = encoding.decode(encoding.encode(user)[:12000])
-
             elif 'item' in sub_task['description']:
                 for n_bus in range(len(self.task['candidate_list'])):
                     item = self.interaction_tool.get_item(item_id=self.task['candidate_list'][n_bus])
                     keys_to_extract = ['item_id', 'name','stars','review_count','attributes','title', 'average_rating', 'rating_number','description','ratings_count','title_without_series']
                     filtered_item = {key: item[key] for key in keys_to_extract if key in item}
-                item_list.append(filtered_item)
+                    item_list.append(filtered_item)
                 # print(item)
             elif 'review' in sub_task['description']:
                 history_review = str(self.interaction_tool.get_reviews(user_id=self.task['user_id']))
@@ -131,33 +130,56 @@ class MyRecommendationAgent(RecommendationAgent):
             else:
                 pass
         task_description = f'''
-        You are a real user on an online platform. Your historical item review text and stars are as follows: {history_review}. 
-        Now you need to rank the following 20 items: {self.task['candidate_list']} according to their match degree to your preference.
-        Please rank the more interested items more front in your rank list.
-        The information of the above 20 candidate items is as follows: {item_list}.
+        You are simulating a real Yelp user. Your past review history represents your personal taste:
 
-        Your final output should be ONLY a ranked item list of {self.task['candidate_list']} with the following format, DO NOT introduce any other item ids!
-        DO NOT output your analysis process!
+        User Review History:
+        {history_review}
 
-        The correct output format:
+        You will be given 20 candidate item IDs to rank based on how well they match the user's preference:
 
-        ['item id1', 'item id2', 'item id3', ...]
+        Candidate Items (IDs only):
+        {self.task['candidate_list']}
 
+        Information for Each Candidate Item:
+        {item_list}
+
+        Your task:
+        Rank all 20 candidate item IDs from most preferred → least preferred.
+        Base ranking ONLY on preference inferred from review history and provided item metadata.
+
+        Strict Output Rules:
+        1. Output ONLY a Python list of item IDs.
+        2. Include ALL and ONLY the IDs from Candidate Items.
+        3. Do NOT explain reasoning.
+        4. Do NOT include extra words, comments, or formatting.
+
+        Correct Output Example:
+        ['item_01', 'item_17', 'item_04', ..., 'item_12']
+
+        Now output your ranked list:
         '''
-        result = self.reasoning(task_description)
-
+        for i in range(3):
+            result = self.reasoning(task_description)
+            if result:
+                break
+            else:
+                print(f'attempt {i} failed trying again')
+                print("tokens: ",num_tokens_from_string(task_description))
+        
         try:
-            # print('Meta Output:',result)
+            print('Meta Output:',result)
             match = re.search(r"\[.*\]", result, re.DOTALL)
             if match:
                 result = match.group()
             else:
                 print("No list found.")
+                print("failed prompt: ", task_description)
             print('Processed Output:',eval(result))
             # time.sleep(4)
             return eval(result)
         except:
             print('format error')
+            print("failed prompt: ", task_description)
             return ['']
 
 
@@ -177,7 +199,7 @@ if __name__ == "__main__":
 
     # Run evaluation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
+    agent_outputs = simulator.run_simulation(number_of_tasks=10, enable_threading=True, max_workers=10)
 
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
