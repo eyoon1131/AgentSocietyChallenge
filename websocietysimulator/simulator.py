@@ -181,14 +181,15 @@ class Simulator:
             from threading import Lock, Event
             
             log_lock = Lock()
+            cache_lock = Lock()
             cancel_event = Event()  # 添加取消事件标志
             self.simulation_outputs = [None] * len(task_to_run)
 
             def process_task(task_index_tuple):
                 from concurrent.futures import ThreadPoolExecutor, TimeoutError
                 
-                def run_agent_task(agent, task):
-                    output = agent.workflow()
+                def run_agent_task(agent, task, cache_lock):
+                    output = agent.workflow(cache_lock)
                     return output
                 
                 index, task = task_index_tuple
@@ -206,7 +207,7 @@ class Simulator:
                 try:
                     # 使用内部的ThreadPoolExecutor来执行单个任务，设置超时时间为5分钟
                     with ThreadPoolExecutor(max_workers=1) as single_task_executor:
-                        future = single_task_executor.submit(run_agent_task, agent, task)
+                        future = single_task_executor.submit(run_agent_task, agent, task, cache_lock)
                         try:
                             output = future.result(timeout=300)  # 5 minutes timeout
                             result = {

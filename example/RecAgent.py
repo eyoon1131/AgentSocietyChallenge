@@ -8,6 +8,7 @@ from websocietysimulator.agent.modules.reasoning_modules import ReasoningBase
 import re
 import logging
 import time
+import os 
 logging.basicConfig(level=logging.INFO)
 
 def num_tokens_from_string(string: str) -> int:
@@ -17,6 +18,18 @@ def num_tokens_from_string(string: str) -> int:
     except:
         print(encoding.encode(string))
     return a
+
+CACHE_PATH = "./item_summary_cache.json"
+
+def load_item_cache():
+    if os.path.exists(CACHE_PATH):
+        with open(CACHE_PATH, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_item_cache(cache):
+    with open(CACHE_PATH, "w") as f:
+        json.dump(cache, f, indent=4)
 class ItemSummaryReasoning(ReasoningBase):
     """
     Summarize the review history for a single item into a short, informative
@@ -159,8 +172,9 @@ class MyRecommendationAgent(RecommendationAgent):
         self.planning = RecPlanning(llm=self.llm)
         self.reasoning = RecReasoning(profile_type_prompt='', llm=self.llm)
         self.item_summarizer = ItemSummaryReasoning(llm=self.llm)  # NEW
-
-    def workflow(self):
+        # Load cache once per run
+        self.item_cache = load_item_cache()
+    def workflow(self,cache_lock):
         """
         Simulate user behavior
         Returns:
@@ -189,7 +203,13 @@ class MyRecommendationAgent(RecommendationAgent):
                     encoding = tiktoken.get_encoding("cl100k_base")
                     user = encoding.decode(encoding.encode(user)[:12000])
             elif 'item' in sub_task['description']:
+                tmp = 0
                 for cand_item_id in self.task['candidate_list']:
+                    # first check cache
+                    if cand_item_id in self.item_cache:
+                        item_list.append(self.item_cache[cand_item_id])
+                        continue
+                    tmp += 1
                     # 1) Get raw item info
                     item = self.interaction_tool.get_item(item_id=cand_item_id)
                     # 2) Get reviews for this item (assuming API signature uses item_id)
@@ -214,8 +234,17 @@ class MyRecommendationAgent(RecommendationAgent):
                         "review_count": item.get("review_count", None),
                         "summary": item_summary,
                     }
-
+                    # save to cache and JSON file
+                    with cache_lock:
+                        self.item_cache[cand_item_id] = item_entry
                     item_list.append(item_entry)
+                if tmp != 0:
+                    with cache_lock:
+                        time.sleep(4)
+                        save_item_cache(self.item_cache)
+                        time.sleep(4)
+
+
 
                 # print(item)
             elif 'review' in sub_task['description']:
