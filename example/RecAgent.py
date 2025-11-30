@@ -17,6 +17,79 @@ def num_tokens_from_string(string: str) -> int:
     except:
         print(encoding.encode(string))
     return a
+class ItemSummaryReasoning(ReasoningBase):
+    """
+    Summarize the review history for a single item into a short, informative
+    natural-language summary that the ranking LLM can consume.
+    """
+    def __init__(self, llm, max_review_tokens: int = 2048, max_summary_tokens: int = 256):
+        super().__init__(profile_type_prompt='', memory=None, llm=llm)
+        self.max_review_tokens = max_review_tokens
+        self.max_summary_tokens = max_summary_tokens
+
+    def _truncate_reviews(self, reviews_text: str) -> str:
+        encoding = tiktoken.get_encoding("cl100k_base")
+        tokens = encoding.encode(reviews_text)
+        if len(tokens) <= self.max_review_tokens:
+            return reviews_text
+        return encoding.decode(tokens[:self.max_review_tokens])
+
+    def __call__(self, item: dict, reviews_text: str) -> str:
+        """
+        Args:
+            item: raw item dict from interaction_tool.get_item(...)
+            reviews_text: raw text of reviews for this item (possibly many)
+        Returns:
+            A short summary string.
+        """
+        if not isinstance(reviews_text, str):
+            reviews_text = str(reviews_text)
+
+        reviews_text = self._truncate_reviews(reviews_text)
+
+        name = item.get('name', '')
+        stars = item.get('stars', None)
+        review_count = item.get('review_count', None)
+        attrs = item.get('attributes', {})
+
+        prompt = f"""
+You are summarizing Yelp reviews for a single restaurant.
+
+Basic info:
+- Name: {name}
+- Stars: {stars}
+- Review count: {review_count}
+- Key attributes (raw): {attrs}
+
+Below are raw reviews for this business (they may be truncated):
+
+{reviews_text}
+
+Write a concise, factual summary of what people think about this restaurant.
+Focus on:
+- Overall sentiment and how good it is
+- What people like (e.g., food, service, atmosphere, value)
+- Any consistent complaints
+- Price level / vibe if clear
+
+Constraints:
+- 3–5 sentences.
+- Do NOT mention that the reviews are truncated or that you are an AI.
+- Do NOT repeat the raw reviews verbatim.
+"""
+
+        messages = [{"role": "user", "content": prompt.strip()}]
+
+        summary = self.llm(
+            messages=messages,
+            temperature=0.1,
+            max_tokens=4096,
+        )
+
+        if summary is None:
+            return ""
+
+        return str(summary).strip()
 
 class RecPlanning(PlanningBase):
     """Inherits from PlanningBase"""
@@ -85,6 +158,7 @@ class MyRecommendationAgent(RecommendationAgent):
         super().__init__(llm=llm)
         self.planning = RecPlanning(llm=self.llm)
         self.reasoning = RecReasoning(profile_type_prompt='', llm=self.llm)
+        self.item_summarizer = ItemSummaryReasoning(llm=self.llm)  # NEW
 
     def workflow(self):
         """
@@ -115,11 +189,34 @@ class MyRecommendationAgent(RecommendationAgent):
                     encoding = tiktoken.get_encoding("cl100k_base")
                     user = encoding.decode(encoding.encode(user)[:12000])
             elif 'item' in sub_task['description']:
-                for n_bus in range(len(self.task['candidate_list'])):
-                    item = self.interaction_tool.get_item(item_id=self.task['candidate_list'][n_bus])
-                    keys_to_extract = ['item_id', 'name','stars','review_count','attributes','title', 'average_rating', 'rating_number','description','ratings_count','title_without_series']
-                    filtered_item = {key: item[key] for key in keys_to_extract if key in item}
-                    item_list.append(filtered_item)
+                for cand_item_id in self.task['candidate_list']:
+                    # 1) Get raw item info
+                    item = self.interaction_tool.get_item(item_id=cand_item_id)
+                    # 2) Get reviews for this item (assuming API signature uses item_id)
+                    try:
+                        raw_item_reviews = self.interaction_tool.get_reviews(item_id=cand_item_id)
+                    except TypeError:
+                        # If your API is different, adjust this, e.g. get_reviews(business_id=...)
+                        raw_item_reviews = ""
+
+                    if not isinstance(raw_item_reviews, str):
+                        # raw_item_reviews = str(raw_item_reviews)
+                        item_review_text = [x['text'] for x in raw_item_reviews]
+                        item_review_text = str(item_review_text)
+                    
+                    # 3) Summarize the reviews using the new ReasoningBase module
+                    item_summary = self.item_summarizer(item=item, reviews_text=raw_item_reviews)
+                    # 4) Build compact item representation for the ranking LLM
+                    item_entry = {
+                        "item_id": item.get("item_id", cand_item_id),
+                        "name": item.get("name", ""),
+                        "stars": item.get("stars", None),
+                        "review_count": item.get("review_count", None),
+                        "summary": item_summary,
+                    }
+
+                    item_list.append(item_entry)
+
                 # print(item)
             elif 'review' in sub_task['description']:
                 history_review = str(self.interaction_tool.get_reviews(user_id=self.task['user_id']))
@@ -158,6 +255,7 @@ class MyRecommendationAgent(RecommendationAgent):
 
         Now output your ranked list:
         '''
+        print("tokens: ",num_tokens_from_string(task_description))
         for i in range(3):
             result = self.reasoning(task_description)
             if result:
@@ -199,7 +297,7 @@ if __name__ == "__main__":
 
     # Run evaluation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    agent_outputs = simulator.run_simulation(number_of_tasks=10, enable_threading=True, max_workers=10)
+    agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10)
 
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
