@@ -162,7 +162,7 @@ class RecReasoning(ReasoningBase):
         )
         
         return reasoning_result
-
+import textwrap
 class MyRecommendationAgent(RecommendationAgent):
     """
     Participant's implementation of SimulationAgent
@@ -203,88 +203,187 @@ class MyRecommendationAgent(RecommendationAgent):
                     encoding = tiktoken.get_encoding("cl100k_base")
                     user = encoding.decode(encoding.encode(user)[:12000])
             elif 'item' in sub_task['description']:
-                tmp = 0
+                # tmp = 0
                 for cand_item_id in self.task['candidate_list']:
                     # first check cache
                     if cand_item_id in self.item_cache:
                         item_list.append(self.item_cache[cand_item_id])
                         continue
-                    tmp += 1
+                    # tmp += 1
                     # 1) Get raw item info
                     item = self.interaction_tool.get_item(item_id=cand_item_id)
                     # 2) Get reviews for this item (assuming API signature uses item_id)
-                    try:
-                        raw_item_reviews = self.interaction_tool.get_reviews(item_id=cand_item_id)
-                    except TypeError:
-                        # If your API is different, adjust this, e.g. get_reviews(business_id=...)
-                        raw_item_reviews = ""
+                    # try:
+                    #     raw_item_reviews = self.interaction_tool.get_reviews(item_id=cand_item_id)
+                    # except TypeError:
+                    #     # If your API is different, adjust this, e.g. get_reviews(business_id=...)
+                    #     raw_item_reviews = ""
 
-                    if not isinstance(raw_item_reviews, str):
-                        # raw_item_reviews = str(raw_item_reviews)
-                        item_review_text = [x['text'] for x in raw_item_reviews]
-                        item_review_text = str(item_review_text)
+                    # if not isinstance(raw_item_reviews, str):
+                    #     # raw_item_reviews = str(raw_item_reviews)
+                    #     item_review_text = [x['text'] for x in raw_item_reviews]
+                    #     item_review_text = str(item_review_text)
                     
-                    # 3) Summarize the reviews using the new ReasoningBase module
-                    item_summary = self.item_summarizer(item=item, reviews_text=raw_item_reviews)
-                    # 4) Build compact item representation for the ranking LLM
+                    # # 3) Summarize the reviews using the new ReasoningBase module
+                    # item_summary = self.item_summarizer(item=item, reviews_text=raw_item_reviews)
+                    # # 4) Build compact item representation for the ranking LLM
                     item_entry = {
                         "item_id": item.get("item_id", cand_item_id),
                         "name": item.get("name", ""),
                         "stars": item.get("stars", None),
                         "review_count": item.get("review_count", None),
-                        "summary": item_summary,
+                        "summary": item.get("categories",None),
                     }
                     # save to cache and JSON file
-                    with cache_lock:
-                        self.item_cache[cand_item_id] = item_entry
+                #     with cache_lock:
+                #         self.item_cache[cand_item_id] = item_entry
                     item_list.append(item_entry)
-                if tmp != 0:
-                    with cache_lock:
-                        time.sleep(4)
-                        save_item_cache(self.item_cache)
-                        time.sleep(4)
+                # if tmp != 0:
+                #     with cache_lock:
+                #         time.sleep(4)
+                #         save_item_cache(self.item_cache)
+                #         time.sleep(4)
+                def format_candidate_items(items):
+                    """
+                    Convert list of candidate item dicts into a compact, LLM-friendly text block.
 
+                    Expected keys per item:
+                        item_id, name, stars, review_count, summary (using your item_entry mapping)
+
+                    Returns:
+                        A multi-line string like:
+
+                        (1) Tio Pepe Restaurant & Bar  ⭐ 4.5 (88 reviews)
+                            item_id: abc123
+                            Summary: Portuguese cuisine, seafood, friendly atmosphere...
+                    """
+
+                    lines = []
+                    for idx, it in enumerate(items, start=1):
+                        name         = it.get("name", "Unknown Name")
+                        item_id      = it.get("item_id", "")
+                        stars        = it.get("stars", "N/A")
+                        review_count = it.get("review_count", "N/A")
+                        summary      = it.get("summary", "")
+
+                        # Flatten summary/category text for readability
+                        if isinstance(summary, list):
+                            summary = ", ".join(summary)
+                        summary = str(summary).replace("\n", " ").strip()
+
+                        entry = (
+                            f"({idx}) {name}  ⭐ {stars} ({review_count} reviews)\n"
+                            f"     id: {item_id}\n"
+                            f"     Summary: {summary}\n"
+                        )
+                        lines.append(entry)
+
+                    return "\n".join(lines)
+                item_list = format_candidate_items(item_list)
 
 
                 # print(item)
             elif 'review' in sub_task['description']:
-                history_review = str(self.interaction_tool.get_reviews(user_id=self.task['user_id']))
+                history_review = self.interaction_tool.get_reviews(user_id=self.task['user_id'])
+                def format_user_review_history(reviews, max_reviews=None):
+                    """
+                    reviews: list of dicts with keys like 'stars', 'useful', 'funny', 'cool', 'date', 'text'
+                    max_reviews: optionally limit to first N reviews (after sorting) to save tokens
+                    """
+                    # (Optional) sort by usefulness + recency, most informative first
+                    sorted_reviews = sorted(
+                        reviews,
+                        key=lambda r: (
+                            r.get("useful", 0) + r.get("cool", 0) + r.get("funny", 0),
+                            r.get("date", ""),
+                        ),
+                        reverse=True,
+                    )
+
+                    if max_reviews is not None:
+                        sorted_reviews = sorted_reviews[:max_reviews]
+
+                    lines = []
+                    for i, r in enumerate(sorted_reviews, start=1):
+                        stars = r.get("stars", "N/A")
+                        useful = r.get("useful", 0)
+                        funny  = r.get("funny", 0)
+                        cool   = r.get("cool", 0)
+                        date   = str(r.get("date", ""))[:10]
+                        text   = r.get("text", "").strip().replace("\n", " ")
+
+                        entry = (
+                            f"- Review {i}:\n"
+                            f"  stars: {stars} | useful: {useful}, funny: {funny}, cool: {cool}\n"
+                            f"  date: {date}\n"
+                            f"  text: {text}\n"
+                        )
+                        lines.append(entry)
+
+                    return "\n".join(lines)
+                history_review= format_user_review_history(history_review,max_reviews=30)
                 input_tokens = num_tokens_from_string(history_review)
                 if input_tokens > 12000:
                     encoding = tiktoken.get_encoding("cl100k_base")
                     history_review = encoding.decode(encoding.encode(history_review)[:12000])
             else:
                 pass
-        task_description = f'''
-        You are simulating a real Yelp user. Your past review history represents your personal taste:
+        task_description = textwrap.dedent(f"""
+            You are simulating a specific Yelp user.
+            The review history below is the ONLY signal of this user's personal taste.
 
-        User Review History:
-        {history_review}
+            First, internally infer what this user likes and dislikes from their review history
+            (e.g., food, service, atmosphere, price, vibe). DO NOT output this reasoning.
 
-        You will be given 20 candidate item IDs to rank based on how well they match the user's preference:
+            ========================
+            USER REVIEW HISTORY
+            ========================
+            {history_review}
 
-        Candidate Items (IDs only):
-        {self.task['candidate_list']}
+            ========================
+            CANDIDATE ITEMS
+            ========================
 
-        Information for Each Candidate Item:
-        {item_list}
+            You will now rank 20 candidate businesses by how much THIS USER would personally like them.
 
-        Your task:
-        Rank all 20 candidate item IDs from most preferred → least preferred.
-        Base ranking ONLY on preference inferred from review history and provided item metadata.
+            Candidate item IDs (for reference):
+            {self.task['candidate_list']!r}
 
-        Strict Output Rules:
-        1. Output ONLY a Python list of item IDs.
-        2. Include ALL and ONLY the IDs from Candidate Items.
-        3. Do NOT explain reasoning.
-        4. Do NOT include extra words, comments, or formatting.
+            Information for each candidate item:
+            {item_list}
 
-        Correct Output Example:
-        ['item_01', 'item_17', 'item_04', ..., 'item_12']
+            ========================
+            YOUR TASK
+            ========================
 
-        Now output your ranked list:
-        '''
+            Using ONLY:
+            - the user's review history above, and
+            - the candidate item metadata (name, stars, review_count, summary),
+
+            rank how much this user would personally like each candidate business.
+
+            Important:
+            - Do NOT simply sort by stars or review_count.
+            - Focus on how well each business matches this specific user's tastes and tone.
+
+            ========================
+            STRICT OUTPUT RULES
+            ========================
+
+            1. Output ONLY a Python list literal of item IDs.
+            2. Include ALL and ONLY the IDs from the Candidate item ID list above.
+            3. Do NOT explain your reasoning.
+            4. Do NOT include any extra words, comments, or formatting before or after the list.
+
+            Correct output EXAMPLE format (example order only, IDs must be from the list above):
+
+            ['K-S_YhtoGffXF9f3azGY2A', '2hvDcM769GC5t6zrkn4A3w', 'Rzx2E5XgTeGU7FEbUZ-bGg', ..., 'Cp5vp6LVGudRE6WXwVwEaA']
+
+            Now output your ranked list of item IDs, from MOST preferred to LEAST preferred:
+        """).strip()
+        print("***task: ", task_description, "--- \n\n")
         print("tokens: ",num_tokens_from_string(task_description))
+        # print(task_description)
         for i in range(3):
             result = self.reasoning(task_description)
             if result:
