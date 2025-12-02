@@ -2,6 +2,8 @@ from typing import Dict, List, Optional, Union
 from openai import OpenAI
 from langchain_openai import OpenAIEmbeddings
 from .infinigence_embeddings import InfinigenceEmbeddings
+import google.generativeai as genai
+from langchain_core.embeddings import Embeddings
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import logging
 
@@ -171,11 +173,7 @@ class GeminiLLM(LLMBase):
             api_key=api_key, 
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         )
-        self.embedding_model = OpenAIEmbeddings(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            model="models/embedding-001"
-        )
+        self.embedding_model = GeminiEmbeddings(api_key=api_key)
         
     @retry(
         retry=retry_if_exception_type(Exception),
@@ -197,6 +195,10 @@ class GeminiLLM(LLMBase):
             Union[str, List[str]]: Response text from LLM, either a single string or list of strings
         """
         try:
+            # for message in messages:
+            #     for key, value in message.items():
+            #         print(key)
+            #         print(value)
             kwargs = dict(
                 model=model or self.model,
                 messages=messages,
@@ -207,7 +209,7 @@ class GeminiLLM(LLMBase):
             if stop_strs:
                 kwargs["stop"] = stop_strs
             response = self.client.chat.completions.create(**kwargs)
-            # print(response)
+            # print(response.usage)
             if n == 1:
                 return response.choices[0].message.content
             else:
@@ -221,3 +223,22 @@ class GeminiLLM(LLMBase):
     
     def get_embedding_model(self):
         return self.embedding_model 
+
+class GeminiEmbeddings(Embeddings):
+    def __init__(self, api_key: str, model: str = "models/embedding-001"):
+        genai.configure(api_key=api_key)
+        self.model = model
+
+    def embed_query(self, text: str) -> List[float]:
+        """Embed a single query string."""
+        if text is None:
+            text = ""
+        resp = genai.embed_content(
+            model=self.model,
+            content=text,
+        )
+        return resp["embedding"]
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed multiple documents."""
+        return [self.embed_query(t) for t in texts]
