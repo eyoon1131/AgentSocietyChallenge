@@ -209,7 +209,7 @@ class GeminiLLM(LLMBase):
             if stop_strs:
                 kwargs["stop"] = stop_strs
             response = self.client.chat.completions.create(**kwargs)
-            # print(response.usage)
+            # print(response)
             if n == 1:
                 return response.choices[0].message.content
             else:
@@ -225,7 +225,7 @@ class GeminiLLM(LLMBase):
         return self.embedding_model 
 
 class GeminiEmbeddings(Embeddings):
-    def __init__(self, api_key: str, model: str = "models/embedding-001"):
+    def __init__(self, api_key: str, model: str = "models/text-embedding-004"):
         genai.configure(api_key=api_key)
         self.model = model
 
