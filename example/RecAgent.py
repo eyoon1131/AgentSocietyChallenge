@@ -12,6 +12,7 @@ import os
 from langchain_chroma import Chroma
 from langchain.docstore.document import Document
 from collections import Counter
+import time
 logging.basicConfig(level=logging.INFO)
 
 def num_tokens_from_string(string: str) -> int:
@@ -85,10 +86,12 @@ This summary was generated from 10 reviews
                 self.memory(user_id, reasoning_result)
             else:
                 raise Exception()
+            time.sleep(1)
             return reasoning_result
         except:
             print("Bad LLM output")
             # Retry with larger token budget on failure
+            time.sleep(1)
             return self.__call__(user_id, user_data, user_reviews, num_reviews, task_category, token_budget * 2)
     
 class ItemReasoning(ReasoningBase):
@@ -127,10 +130,12 @@ The reviews are as follows: {item_reviews}
                 self.memory(item_id, reasoning_result)
             else:
                 raise Exception()
+            time.sleep(1)
             return reasoning_result
         except:
             print("Bad LLM output")
             # Retry with larger token budget on failure
+            time.sleep(1)
             return self.__call__(item_id, item_info, item_reviews, task_category, token_budget * 2)
 
 class TaskReasoning(ReasoningBase):
@@ -156,7 +161,6 @@ That line MUST be a valid Python list literal containing ALL and ONLY the candid
 DO NOT introduce any other item ids in the ranking list that are not candidates!
 DO NOT provide your reasoning or analysis.
 The correct output format:
-
 ['id1', 'id2', 'id3', ..., 'id20']
 
 '''
@@ -189,10 +193,12 @@ The correct output format:
             # Do voting between all output lists
             final_ranking = borda_vote(ranking_list)
             print('Processed Output:', final_ranking)
+            time.sleep(1)
             return final_ranking
         except:
             print('format error')
             # Retry with larger token budget on failure
+            time.sleep(1)
             return self.__call__(user_id, user_summary, user_categories, item_list, item_data, task_category, token_budget * 2)
     
 class ModuleMemory(MemoryBase):
@@ -237,7 +243,7 @@ class MyRecommendationAgent(RecommendationAgent):
     Participant's implementation of RecommendationAgent
     """
 
-    llm = GeminiLLM(api_key="API_KEY")
+    llm = GeminiLLM(api_key="")
     user_memory = ModuleMemory(memory_type="user", llm=llm)
     item_memory = ModuleMemory(memory_type="item", llm=llm)
 
@@ -302,12 +308,7 @@ class MyRecommendationAgent(RecommendationAgent):
             categories = item.get("categories")
             if not categories:
                 continue
-            if isinstance(categories, str):
-                categoriess = [c.strip().lower() for c in categories.split(",")]
-            elif isinstance(categories, list):
-                categories = [c.strip().lower() for c in categories]
-            else:
-                continue
+            categories = [c.strip().lower() for c in categories.split(",")]
             for c in categories:
                 if c:
                     category_counter[c] += 1
@@ -364,7 +365,7 @@ class MyRecommendationAgent(RecommendationAgent):
         # Check if item summaries already in memory
         item_summaries = []
         for i, item_id in enumerate(candidate_list):
-            result = self.item_memory.retriveMemory(item_id)
+            result = self.item_memory(item_id)
             if result:
                 item_summaries.append(result)
             else:                
@@ -404,7 +405,7 @@ if __name__ == "__main__":
 
     # Run evaluation
     # If you don't set the number of tasks, the simulator will run all tasks.
-    agent_outputs = simulator.run_simulation(number_of_tasks=1, enable_threading=True, max_workers=1) 
+    agent_outputs = simulator.run_simulation(number_of_tasks=None, enable_threading=True, max_workers=10) 
 
     # Evaluate the agent
     evaluation_results = simulator.evaluate()
