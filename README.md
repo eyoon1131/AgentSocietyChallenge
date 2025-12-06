@@ -57,7 +57,7 @@ The repository is organized using [Python Poetry](https://python-poetry.org/). F
 
 ### 3. Running Models
 
-Prior to running the program, you must modify the the MyRecommendationAgent class 
+Prior to running the program, you must modify the MyRecommendationAgent class 
 ```python
 class MyRecommendationAgent(RecommendationAgent):
 
