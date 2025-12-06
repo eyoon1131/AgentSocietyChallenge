@@ -42,7 +42,7 @@ The repository is organized using [Python Poetry](https://python-poetry.org/). F
 
 ### 2. Data Preparation
 
-1. Download the raw dataset from the Yelp[1], Amazon[2] or Goodreads[3].
+1. Download the raw dataset from the Yelp[1].
 2. Run the `data_process.py` script to process the dataset:
    ```bash
    mkdir -p data/yelp_processed
@@ -63,6 +63,13 @@ To run our final model (assuming you are in the agentsocietychallenge directory)
 cd example
 python RecAgent.py
 ```
+Prior to running the program, you must modify the the MyRecommendationAgent class 
+```
+class MyRecommendationAgent(RecommendationAgent):
+
+  llm = GeminiLLM(api_key="YOUR_API_KEY")
+```
+substiuting the api_key field with a valid Gemini API key.
 
 ---
 # 🚀 AgentSociety Challenge
