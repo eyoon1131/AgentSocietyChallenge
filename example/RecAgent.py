@@ -243,7 +243,7 @@ class MyRecommendationAgent(RecommendationAgent):
     Participant's implementation of RecommendationAgent
     """
 
-    llm = GeminiLLM(api_key="")
+    llm = GeminiLLM(api_key="YOUR_API_KEY")
     user_memory = ModuleMemory(memory_type="user", llm=llm)
     item_memory = ModuleMemory(memory_type="item", llm=llm)
 
