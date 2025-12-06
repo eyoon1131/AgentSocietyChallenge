@@ -64,12 +64,19 @@ cd example
 python RecAgent.py
 ```
 Prior to running the program, you must modify the the MyRecommendationAgent class 
-```
+```python
 class MyRecommendationAgent(RecommendationAgent):
 
   llm = GeminiLLM(api_key="YOUR_API_KEY")
 ```
-substiuting the api_key field with a valid Gemini API key.
+substituting the api_key field with a valid Gemini API key.
+
+### 4. Additional Requirements
+
+Our presentation slides and experiment logs are available in the additional_files folder:
+```bash
+cd additional_files
+```
 
 ---
 # 🚀 AgentSociety Challenge
